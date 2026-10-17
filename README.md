@@ -1,10 +1,10 @@
 # Semust MCP Server
 
-[![Version 1.4.0](https://img.shields.io/badge/version-1.4.0-blue.svg)](CHANGELOG.md)
+[![Version 1.4.1](https://img.shields.io/badge/version-1.4.1-blue.svg)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Ask Claude about your SEO and advertising data in plain language.** This MCP server connects Claude Desktop (and Cursor) to your [Semust](https://semust.com) account — keywords, pages, traffic trends, SEO reports, Google Analytics, Google Ads, Yandex Metrica, Bing Webmaster, and more.
+**Ask Claude about your SEO and advertising data in plain language.** This MCP server connects Claude Desktop (and Claude Code, and Cursor) to your [Semust](https://semust.com) account — keywords, pages, traffic trends, SEO reports, Google Analytics, Google Ads, Yandex Metrica, Bing Webmaster, and more.
 
 > "Show me my top keywords for the last month"
 >
@@ -133,6 +133,8 @@ cd semust-mcp
 pip install -r requirements.txt
 ```
 
+On macOS and Linux, use `pip3` if `pip` is not found.
+
 ### Step 3: Configure Claude Desktop
 
 Find your Claude Desktop config file:
@@ -160,19 +162,27 @@ Open `claude_desktop_config.json`
 <details>
 <summary><b>Mac</b></summary>
 
+In Finder press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> and paste this:
 ```
-~/Library/Application Support/Claude/claude_desktop_config.json
+~/Library/Application Support/Claude/
 ```
+Open `claude_desktop_config.json`
 </details>
 
-Add `mcpServers` to the file. If the file already has content, **merge** this into the existing JSON:
+If `claude_desktop_config.json` is not there, create it — Claude Desktop only writes the file once you have added a server.
+
+Add `mcpServers` to the file. If the file already has content, **merge** this into the existing JSON.
+
+**Use the block for your operating system** — the Python command and the path format are different on each.
+
+**macOS / Linux**
 
 ```json
 {
   "mcpServers": {
     "semust": {
-      "command": "python",
-      "args": ["C:\\full\\path\\to\\semust-mcp\\semust_mcp.py"],
+      "command": "python3",
+      "args": ["/Users/you/semust-mcp/semust_mcp.py"],
       "env": {
         "SEMUST_API_KEY": "your-api-key-here",
         "SEMUST_BASE_URL": "https://api.semust.com/v1/mcp"
@@ -206,15 +216,64 @@ Add `mcpServers` to the file. If the file already has content, **merge** this in
 }
 ```
 
-> **Important**: Replace the path with the actual location of `semust_mcp.py` on your machine.
+**Windows**
+
+```json
+{
+  "mcpServers": {
+    "semust": {
+      "command": "python",
+      "args": ["C:\\Users\\you\\semust-mcp\\semust_mcp.py"],
+      "env": {
+        "SEMUST_API_KEY": "your-api-key-here",
+        "SEMUST_BASE_URL": "https://api.semust.com/v1/mcp"
+      },
+      "alwaysAllow": [
+        "list_projects",
+        "get_keywords", "get_pages", "get_performance",
+        "report_cannibalization", "report_monthly_summary", "report_long_tail",
+        "report_winner_loser", "report_questions", "report_content_decay",
+        "report_striking_distance", "report_low_ctr", "report_thin_content",
+        "ga_get_overview", "ga_get_traffic_sources", "ga_get_pages",
+        "ga_get_geo", "ga_get_devices", "ga_get_key_events",
+        "ga_report_traffic_trends", "ga_report_landing_page_performance",
+        "ga_report_channel_comparison", "ga_report_engagement_analysis",
+        "gads_get_campaigns", "gads_get_daily_metrics", "gads_get_geo",
+        "gads_get_devices", "gads_get_search_terms",
+        "gads_report_performance_overview", "gads_report_spend_analysis",
+        "gads_report_conversion_breakdown",
+        "rank_get_keywords", "rank_get_overview", "rank_get_history",
+        "rank_report_gainers_losers", "rank_report_distribution",
+        "ai_rank_get_overview", "ai_rank_get_keywords", "ai_rank_get_domains",
+        "indexing_get_status", "indexing_get_history",
+        "ym_get_overview", "ym_get_traffic", "ym_get_pages",
+        "ym_get_geo", "ym_get_devices", "ym_get_search_phrases",
+        "bing_get_query_stats", "bing_get_page_stats", "bing_get_crawl_stats",
+        "bing_get_crawl_issues", "bing_get_rank_traffic", "bing_get_link_counts",
+        "bing_get_keyword_stats", "bing_get_url_traffic", "bing_get_url_links"
+      ]
+    }
+  }
+}
+```
+
+> **Important**: Replace the path with the actual location of `semust_mcp.py` on your machine. It
+> must be an **absolute** path — Claude Desktop does not expand `~`, so `~/semust-mcp/...` fails.
 >
-> **Windows**: Use double backslashes: `C:\\Users\\you\\semust-mcp\\semust_mcp.py`
+> **macOS / Linux**: Get the path by running `pwd` inside the `semust-mcp` folder. If `python3` is
+> not found, run `which python3` and use what it prints (usually `/usr/bin/python3`, or
+> `/opt/homebrew/bin/python3` with Homebrew). There is no `python` command on a modern macOS —
+> using it is the most common reason the server fails to start.
 >
-> **If `python` doesn't work**: Use the full Python path instead, e.g.: `C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe`
+> **Windows**: Use double backslashes: `C:\\Users\\you\\semust-mcp\\semust_mcp.py`. If `python` is
+> not recognised, use the full Python path instead, e.g.
+> `C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe`
 >
 > **`alwaysAllow`**: This list lets Claude use Semust tools without asking for permission each time. All tools are read-only and safe to auto-approve. Remove this field if you prefer to approve each tool call manually.
 
-**Quit Claude Desktop completely** (right-click system tray icon > Quit) and reopen it.
+**Quit Claude Desktop completely** and reopen it — on Windows right-click the system tray icon >
+Quit, on macOS press <kbd>Cmd</kbd>+<kbd>Q</kbd> or choose Claude > Quit. Closing the window is not
+enough on either.
 
 ### Step 4: Verify
 
@@ -351,11 +410,59 @@ Type: **"Show me my projects"** — Claude should list your Semust projects.
 
 ---
 
+## Claude Code Setup
+
+Claude Code registers MCP servers from the command line, so there is no config file to edit.
+Steps 1 and 2 of the Quick Start are the same — get your API key and install the dependencies —
+then run:
+
+```bash
+claude mcp add --scope user semust \
+  -e SEMUST_API_KEY=your-api-key-here \
+  -e SEMUST_BASE_URL=https://api.semust.com/v1/mcp \
+  -- python3 /absolute/path/to/semust-mcp/semust_mcp.py
+```
+
+On Windows, replace `python3` with the full path to `python.exe` and use the Windows path format
+from Step 3.
+
+`--scope user` makes the server available in every project. Use `--scope local` to limit it to the
+current project, or `--scope project` to put it in a `.mcp.json` the rest of your team shares —
+with `project` scope, leave out the `-e` flags and use the `.env` file below so your key is not
+committed.
+
+**Keeping the key out of the command.** Instead of the `-e` flags, you can put a `.env` file next
+to `semust_mcp.py`:
+
+```
+SEMUST_API_KEY=your-api-key-here
+SEMUST_BASE_URL=https://api.semust.com/v1/mcp
+```
+
+The server reads it on startup, and it looks next to its own file rather than in the current
+directory, so it is found whichever folder Claude Code launches it from.
+
+**A virtualenv is worth it here.** Pointing the command at a venv's interpreter keeps the server's
+dependencies off your system Python and makes it immune to your `PATH`:
+
+```bash
+cd /path/to/semust-mcp
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+claude mcp add --scope user semust -- /path/to/semust-mcp/.venv/bin/python /path/to/semust-mcp/semust_mcp.py
+```
+
+**Verify:** run `claude mcp list` — you should see `semust: ... - ✔ Connected`. Inside Claude Code,
+reload the window (VS Code: **Developer: Reload Window**) or restart the CLI, then type `/mcp` to
+see the server and its 56 tools. Ask **"Show me my Semust projects"** to confirm it works.
+
+---
+
 ## Cursor Setup
 
 Add the same MCP server in Cursor: **Settings > MCP Servers > Add Server** (stdio type).
 
-Use the same command, args, and env values from the Claude Desktop config above.
+Use the same command, args, and env values from the Claude Desktop config above — including
+picking the block that matches your operating system.
 
 ---
 
@@ -363,8 +470,10 @@ Use the same command, args, and env values from the Claude Desktop config above.
 
 | Problem | Solution |
 |---------|----------|
-| Tools icon not showing | Quit Claude Desktop fully from system tray, reopen |
-| `python` not recognized | Use full Python path in config (see Step 3) |
+| `No module named 'mcp.server.fastmcp'` | You are on a copy older than 1.4.1, which could not start once mcp 2.x came out. Update `semust_mcp.py`, or pin the old version with `pip install "mcp<2"` |
+| Tools icon not showing | Quit Claude Desktop fully — system tray on Windows, <kbd>Cmd</kbd>+<kbd>Q</kbd> on macOS — then reopen |
+| `python` not recognized | On macOS/Linux use `python3` (`which python3` gives the full path); on Windows use the full path to `python.exe` (see Step 3) |
+| Server fails to start, path not found | The path in `args` must be absolute and match your OS — `/Users/you/...` on macOS, `C:\\Users\\you\\...` on Windows. `~` is not expanded |
 | "Invalid API key" (401) | Double-check your key in [Semust Settings](https://semust.com) |
 | "User not active" (403) | You need a paid plan — [semust.com/fiyatlar](https://semust.com/fiyatlar) |
 | "Search Console not connected" | Connect GSC in Semust > Project Settings > Integrations |
@@ -381,7 +490,7 @@ Use the same command, args, and env values from the Claude Desktop config above.
 ## Requirements
 
 - [Python 3.10+](https://www.python.org/downloads/)
-- [Claude Desktop](https://claude.ai/download) or [Cursor](https://cursor.sh)
+- [Claude Desktop](https://claude.ai/download), [Claude Code](https://claude.com/claude-code), or [Cursor](https://cursor.sh)
 - A [Semust](https://semust.com) account with an active subscription
 - Google Search Console, Google Analytics, Google Ads, Yandex Metrica, and/or Bing Webmaster connected to at least one project
 
