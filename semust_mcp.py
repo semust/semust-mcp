@@ -1,5 +1,6 @@
 """
-Semust MCP Server — Connect Claude Desktop, Cursor, and other AI tools to your Semust SEO data.
+Semust MCP Server — Connect Claude Desktop, Claude Code, Cursor, and other AI tools to your
+Semust SEO data.
 
 Setup:
     1. Copy .env.example to .env and add your API key
@@ -14,11 +15,18 @@ from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError:
+    # mcp 2.x renamed FastMCP to MCPServer. The constructor arguments, the
+    # @tool() decorator and run()'s stdio default are unchanged, so the alias is
+    # all this server needs to run on either major version.
+    from mcp.server.mcpserver import MCPServer as FastMCP
 
 load_dotenv()
 
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 
 API_KEY = os.environ.get("SEMUST_API_KEY", "")
 BASE_URL = os.environ.get("SEMUST_BASE_URL", "https://api.semust.com/v1/mcp")
@@ -1989,9 +1997,16 @@ if __name__ == "__main__":
     if not API_KEY:
         raise ValueError(
             "SEMUST_API_KEY environment variable is required. "
-            "Set it in your Claude Desktop config or run:\n"
-            '  $env:SEMUST_API_KEY="your-key"\n'
-            '  $env:SEMUST_BASE_URL="http://localhost:3001/v1/mcp"\n'
-            "  python semust_mcp.py"
+            "Set it in your Claude Desktop config, or run:\n"
+            "\n"
+            "  macOS / Linux:\n"
+            '    export SEMUST_API_KEY="your-key"\n'
+            '    export SEMUST_BASE_URL="http://localhost:3001/v1/mcp"\n'
+            "    python3 semust_mcp.py\n"
+            "\n"
+            "  Windows (PowerShell):\n"
+            '    $env:SEMUST_API_KEY="your-key"\n'
+            '    $env:SEMUST_BASE_URL="http://localhost:3001/v1/mcp"\n'
+            "    python semust_mcp.py"
         )
     mcp.run()
