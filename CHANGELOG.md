@@ -1,5 +1,75 @@
 # Changelog
 
+## [1.7.0] - 2026-10-19
+
+### Added — Competitor Analysis Tools (3)
+- `competitor_list_analyses` — past keyword-gap analyses with gap and shared counts
+- `competitor_get_analysis` — one analysis in full: keyword matrix, per-domain positions and URLs
+- `competitor_get_status` — what a new run would cost, the credit balance, and which domains are already cached
+
+### Read-only on purpose
+A competitor run bills DataForSEO per request (~$0.014-$0.033 a credit). A model that
+re-ran one because it misread "check my competitors" would have spent the customer's
+quota on a question they did not ask, so `/run` and `/discover` are deliberately NOT in
+the MCP group. `competitor_get_status` is what keeps that honest rather than merely
+restrictive: the model quotes the real price and points the user at the product.
+
+A quoted cost of 0 means the domains are still cached from a recent run, not that the
+feature is free — the tool returns `cached_domains` so the model can say which.
+
+---
+
+## [1.6.0] - 2026-10-18
+
+### Added — Change Monitor Tools (2)
+- `changes_list` — what changed on the user's own site: titles, H1s, canonicals, schema, content, new pages, with severity
+- `changes_daily` — per-day change counts, bucketed on the same Istanbul days as the traffic tools so the two series line up
+
+### Why this family matters
+Every SEO platform can tell you your rankings moved. This is the only one that also knows
+you edited the page two days earlier. The instructions now carry the cause-and-effect
+workflow: find the day traffic moved, pull the changes for that day, name the edit.
+
+### Fixed
+- Change-monitor date filtering was off by one day. `('x'::date) AT TIME ZONE 'Europe/Istanbul'`
+  converts rather than interprets, putting the window six hours late; since the crawler
+  writes at ~00:00 UTC every scan fell into the previous day's window. Filtering by the day
+  a change actually happened returned nothing, and the project-home overlay plotted changes
+  a day late. Both the API and that chart are corrected.
+
+---
+
+## [1.5.0] - 2026-10-18
+
+### Added — Semust Metrik Tools (13)
+- `metrik_get_overview` — visitors, visits, pageviews, bounce rate, duration, revenue, with period-over-period change
+- `metrik_get_timeseries` — daily series
+- `metrik_get_breakdown` — one tool for 15 dimensions (pages, sources, channels, UTM, geo, device, browser, OS), with cross-filtering
+- `metrik_get_events` — event counts by type, plus named custom events where a site sets them
+- `metrik_compare_events` — event counts across two periods with change and percentage
+- `metrik_get_live` — active visitors now, and whether the tracking script has ever reported
+- `metrik_get_goals` — goal completions and conversion rates (fast goals + code goals)
+- `metrik_get_products` — product-level sales, units and revenue
+- `metrik_get_revenue_breakdown` — revenue by country or device
+- `metrik_get_funnel` — a funnel defined per call, no setup needed first
+- `metrik_get_paths` — the page sequences visitors actually follow
+- `metrik_get_web_vitals` — Core Web Vitals from real visitors (LCP, CLS, INP, FCP, TTFB)
+- `metrik_get_usage` — this month's billable event count
+
+### Added — elsewhere
+- `list_projects` now reports `integrations.semust_metrik`
+- System instructions: Metrik is first-party and **real time**, so `end_date = today` is
+  correct for `metrik_*` tools. Every other source in that block says to subtract a day
+  or two, so the rule is stated explicitly to stop the model generalising.
+
+### Notes
+- Aggregate only. Individual visitor profiles, session journeys and visitor lists are not
+  exposed — those are customers' end users.
+- Comparison is assembled from two reads rather than a new query. Day buckets are fixed
+  Istanbul calendar days, so a closed range returns the same numbers either way.
+
+---
+
 ## [1.4.1] - 2026-10-18
 
 ### Fixed
