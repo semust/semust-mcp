@@ -26,7 +26,7 @@ except ModuleNotFoundError:
 
 load_dotenv()
 
-__version__ = "1.4.1"
+__version__ = "1.7.0"
 
 API_KEY = os.environ.get("SEMUST_API_KEY", "")
 BASE_URL = os.environ.get("SEMUST_BASE_URL", "https://api.semust.com/v1/mcp")
@@ -74,9 +74,11 @@ WORKFLOW:
 7. Use the project_id from list_projects in all subsequent tool calls.
 8. Only use Yandex Metrica tools (ym_*) on projects where integrations.yandex_metrica = "completed".
 9. Only use Bing Webmaster tools (bing_*) on projects where integrations.bing_webmaster = "completed".
+10. Only use Semust Metrik tools (metrik_*) on projects where integrations.semust_metrik = "completed".
 
 DATE RULES (CRITICAL):
 - Format: YYYY-MM-DD (e.g. 2026-05-01)
+- Semust Metrik (metrik_*) is FIRST PARTY and REAL TIME — there is NO delay. end_date = today is correct and expected. Do not subtract days for metrik tools the way you do for every other source below.
 - Google Search Console data has a 2-day delay. ALWAYS use (today - 2 days) as the most recent end_date for SC tools. Never use today or yesterday.
 - Google Analytics data has a ~1-day delay. Use (today - 1 day) as the most recent end_date for GA tools.
 - When user says "last 30 days" for SC: end_date = today - 2 days, start_date = end_date - 30 days
@@ -150,6 +152,29 @@ Yandex Metrica tools:
 - "Yandex device breakdown", "mobile vs desktop (Yandex)" → ym_get_devices
 - "Yandex search phrases", "what people search (Yandex)" → ym_get_search_phrases
 
+Semust Metrik tools (our own analytics — first party, real time):
+- "my analytics", "Semust Metrik overview", "how is my site doing" → metrik_get_overview
+- "day by day", "traffic trend", "which day did it drop" → metrik_get_timeseries
+- "top pages", "where does my traffic come from", "which countries", "mobile vs desktop" → metrik_get_breakdown (pick the dimension)
+- "how many clicks", "form submissions", "what are visitors doing" → metrik_get_events
+- "are people clicking more than last month", "did form submits drop" → metrik_compare_events
+- "who is on my site right now", "is my tracking working" → metrik_get_live
+- "how many events this month", "my Metrik usage" → metrik_get_usage
+- "conversions", "how many signups", "conversion rate" → metrik_get_goals
+- "which products sell", "best sellers", "product revenue" → metrik_get_products
+- "revenue by country", "does phone or desktop earn more" → metrik_get_revenue_breakdown
+- "how many go from pricing to signup", "where do people drop off" → metrik_get_funnel
+- "how do people move through my site", "what do visitors do after landing" → metrik_get_paths
+- "site speed", "Core Web Vitals", "LCP", "which pages are slow" → metrik_get_web_vitals
+
+Change Monitor tools (what changed on the user's OWN site — no competitor has this):
+- "what changed on my site", "did we break something" → changes_list
+- "why did traffic drop", "did my change work", "when did we touch the site" → changes_daily, then changes_list for the day
+
+Competitor Analysis tools (read-only — a run costs credits and only the user can start one):
+- "who are my competitors", "keyword gaps", "what do they rank for that I don't" → competitor_list_analyses, then competitor_get_analysis
+- "run a new competitor analysis", "what does it cost", "how many competitor credits left" → competitor_get_status
+
 Bing Webmaster tools:
 - "Bing search queries", "Bing keywords" → bing_get_query_stats
 - "Bing page performance" → bing_get_page_stats
@@ -162,6 +187,17 @@ Bing Webmaster tools:
 - "Bing URL backlinks", "who links to this page on Bing?" → bing_get_url_links (requires url)
 
 MULTI-TOOL CHAINING — combine tools for complex requests:
+
+Cause-and-effect workflow (the one combination no other SEO platform can run):
+- "Why did my traffic drop?" → get_performance or metrik_get_timeseries to find the day
+  → changes_daily over the same range → changes_list for the day with the spike
+  → rank_get_keywords to confirm positions moved. Answer with what they CHANGED, not just
+  that traffic fell.
+- "Did my change work?" → changes_list to find the edit date → get_performance for the
+  weeks either side of it → rank_report_gainers_losers. Remember Search Console lags 2
+  days, so measure from change_date + 2.
+- A page that changed AND lost rankings AND has poor Web Vitals (metrik_get_web_vitals)
+  is the strongest recommendation you can make. Look for that overlap.
 
 Search Console combos:
 - "Full SEO audit" → get_performance + get_keywords + get_pages + report_striking_distance + report_low_ctr + report_thin_content
@@ -310,6 +346,14 @@ ERROR HANDLING — give clear actionable guidance:
 - Indexing monitor not activated → Tell user: "Indexing monitor not active. Set it up in Semust > Search Console > Indexing Monitor."
 - "yandex_metrica_not_connected" → Tell user: "Yandex Metrica is not connected for this project. Go to Semust > Project Settings > Integrations to connect Yandex Metrica."
 - "bing_webmaster_not_connected" → Tell user: "Bing Webmaster is not connected for this project. Go to Semust > Project Settings > Integrations to connect Bing Webmaster."
+- "analysis_not_found" → Call competitor_list_analyses first; the id came from somewhere else.
+- "competitor_unavailable" → Tell user the competitor store is briefly unavailable and to retry in a minute.
+- NEVER tell the user you have started, queued or will run a competitor analysis. You cannot. Report the cost from competitor_get_status and point them at Semust > Project > Competitor Analysis.
+- "semust_metrik_not_connected" → Tell user: "Semust Metrik is not active for this project. Go to Semust > Project Settings > Semust Metrik to create a tracking key and install the script."
+- "missing_steps" → The funnel needs at least two ordered steps. Ask the user which pages, or call metrik_get_breakdown with dimension="top_pages" to find the real paths first.
+- "invalid_metric" → Valid Web Vitals metrics are FCP, LCP, CLS, TTFB, INP.
+- "metrik_unavailable" → Tell user: "The analytics store is temporarily unavailable. Try again in a minute." Do not retry immediately.
+- Metrik tools return zeros but tracking.has_data is false → Tell user the tracking script has never reported, so the key exists but the snippet is not installed on the site. Do NOT report this as "no traffic".
 - "user_not_active" → Tell user: "Your Semust subscription is not active. Visit semust.com/fiyatlar (Turkish) or semust.com/en/pricing (English) to get a paid plan."
 - "project_access_denied" → Tell user: "You don't have access to this project. Use list_projects to see your available projects."
 - "rate_limit_exceeded" → Tell user: "Too many requests. Wait a minute and try again."
@@ -364,7 +408,7 @@ def list_projects() -> str:
 
     When to use: At the start of any conversation, or when the user asks about their projects/sites.
 
-    Returns: {projects: [{project_id, project_name, url, role, integrations: {search_console, google_analytics, google_ads, meta_ads, bing_webmaster, yandex_metrica}}]}
+    Returns: {projects: [{project_id, project_name, url, role, integrations: {search_console, google_analytics, google_ads, meta_ads, bing_webmaster, yandex_metrica, semust_metrik}}]}
     - integration status is "completed", "pending", or "not_connected"
     - Only projects with the specific integration = "completed" can use the corresponding tools"""
     return api_get("/projects")
@@ -1988,6 +2032,558 @@ def bing_get_url_links(project_id: str, url: str, page: int = 0) -> str:
     return api_get(f"/projects/{_safe_project_id(project_id)}/bing-webmaster/url-links", {
         "url": url, "page": str(page),
     })
+
+
+# ─── Semust Metrik ────────────────────────────────────────
+
+
+@mcp.tool()
+def metrik_get_overview(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+) -> str:
+    """Get Semust Metrik overview — first-party analytics for the site, with period-over-period change.
+
+    When to use: User asks about "my analytics", "Semust Metrik", site visitors, or traffic when the site uses Semust's own tracking script rather than Google Analytics.
+    Do NOT use for: Google Analytics data (use ga_get_overview), Yandex Metrica (use ym_get_overview), Search Console impressions/clicks (use get_performance).
+
+    Returns: {metrics: {visitors, visits, pageviews, bounce_rate, visit_duration, revenue?, orders?, currency?}, comparison: {visitors_change, visits_change, pageviews_change, revenue_change?, orders_change?}, period, previous_period}
+
+    Tips:
+    - Metrik is FIRST PARTY and REAL TIME — end_date can be today, unlike Search Console and Google Analytics
+    - The comparison is always included; the baseline is the immediately preceding window of the same length
+    - visit_duration is in seconds, bounce_rate is a percentage
+    - revenue fields appear only for projects with e-commerce tracking
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/overview", {
+        "start_date": start_date, "end_date": end_date,
+    })
+
+
+@mcp.tool()
+def metrik_get_timeseries(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+) -> str:
+    """Get the daily Semust Metrik series — one row per day.
+
+    When to use: User asks for a traffic trend, "day by day", a chart, or wants to find which day something changed.
+    Do NOT use for: Totals for a period (use metrik_get_overview), per-page or per-source numbers (use metrik_get_breakdown).
+
+    Returns: {_meta: {total, returned, truncated}, items: [{date, visitors, pageviews, goals, custom_events, payments, revenue, top_source}], period}
+
+    Tips:
+    - Days are Istanbul calendar days
+    - Use this to locate a spike or drop, then metrik_get_breakdown on that narrower range to explain it
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/timeseries", {
+        "start_date": start_date, "end_date": end_date,
+    })
+
+
+@mcp.tool()
+def metrik_get_breakdown(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    dimension: str = "channels",
+    limit: int = 20,
+    filter_by: str = "",
+    filter_value: str = "",
+) -> str:
+    """Break Semust Metrik traffic down by any dimension — pages, sources, geography or technology.
+
+    When to use: User asks "which pages", "where does traffic come from", "which countries", "mobile vs desktop", or any "top N" question about their own analytics.
+    Do NOT use for: Totals (use metrik_get_overview), daily trends (use metrik_get_timeseries), event counts (use metrik_get_events).
+
+    Returns: {_meta: {total, returned, truncated}, dimension, items: [{name|url, views|visits, unique_visitors, percentage, revenue?, orders?}], period}
+
+    Tips:
+    - dimension values: top_pages, entry_pages, exit_pages, hosts, referrers, channels, utm_sources, utm_mediums, utm_campaigns, countries, regions, cities, devices, browsers, os
+    - "channels" is the high-level grouping (Direct, Organic Search, Paid Search, Social, Email, Display, Referral, Marketplace) — start there, then drill into referrers or utm_sources
+    - filter_by/filter_value cross-filters any breakdown by another dimension: filter_by="device", filter_value="phone" shows the top pages for phone visitors only
+    - filter_by accepts: page, referrer, utm_source, utm_medium, utm_campaign, country, region, city, device, browser, os
+    - filter_value must match the stored value exactly, EXCEPT page which is a substring match. Device values are "desktop", "phone", "tablet" — NOT "mobile". Country is a 2-letter code ("TR"). If a filter returns nothing, call this tool for that dimension first to see the real values
+    - Revenue is attributed to the landing page, so entry_pages is the honest view of which pages earn
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        dimension: What to break down by (default "channels") — see the list above
+        limit: Max results (default 20, max 100)
+        filter_by: Optional dimension to filter on
+        filter_value: Value for filter_by
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/breakdown", {
+        "start_date": start_date, "end_date": end_date,
+        "dimension": dimension, "limit": str(limit),
+        "filter_by": filter_by, "filter_value": filter_value,
+    })
+
+
+@mcp.tool()
+def metrik_get_events(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    limit: int = 20,
+    filter_by: str = "",
+    filter_value: str = "",
+) -> str:
+    """Get Semust Metrik event counts by type — clicks, form submits, outbound links, pageviews.
+
+    When to use: User asks "how many clicks", "form submissions", "what are visitors doing", or wants interaction counts rather than traffic counts.
+    Do NOT use for: Comparing two periods (use metrik_compare_events), page traffic (use metrik_get_breakdown).
+
+    Returns: {_meta: {total, returned, truncated}, items: [{name, count, percentage}], period, named_events?: {_meta, items: [{name, event_type, count, percentage}]}}
+
+    Tips:
+    - "name" here is the event TYPE: page_view, on_click, form_submit, external_link, page_exit, performance_metrics, payment, scroll_goal, custom_event
+    - named_events appears only when the site fires custom events with a name set. Most sites do not, so its absence is normal and not an error
+    - on_click is by far the highest-volume type on most sites; compare form_submit and external_link against it for intent
+    - filter_by/filter_value cross-filters, e.g. filter_by="device", filter_value="phone" for phone visitors only. Device values are "desktop", "phone", "tablet" — NOT "mobile". page is a substring match; everything else is exact
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        limit: Max results (default 20, max 100)
+        filter_by: Optional dimension to filter on (page, device, country, browser, os, referrer, utm_source, utm_medium, utm_campaign, region, city)
+        filter_value: Value for filter_by
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/events", {
+        "start_date": start_date, "end_date": end_date, "limit": str(limit),
+        "filter_by": filter_by, "filter_value": filter_value,
+    })
+
+
+@mcp.tool()
+def metrik_compare_events(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    compare_start_date: str = "",
+    compare_end_date: str = "",
+    limit: int = 20,
+    filter_by: str = "",
+    filter_value: str = "",
+) -> str:
+    """Compare Semust Metrik event counts between two periods — what visitors do more, or less, than before.
+
+    When to use: User asks "are people clicking more?", "did form submissions drop?", "compare this month to last month", or any question about a change in behaviour.
+    Do NOT use for: A single period's counts (use metrik_get_events), traffic volume changes (use metrik_get_overview, which already compares).
+
+    Returns: {events: [{name, current, previous, change, change_pct}], period, previous_period}
+
+    Tips:
+    - Leave compare_start_date/compare_end_date empty to compare against the immediately preceding window of the same length — that is what "versus before" almost always means
+    - Set them explicitly for a specific baseline, e.g. the same month last year
+    - Events that stopped entirely are included with current=0, and ones that started appear with previous=0. Those are usually the interesting rows
+    - change_pct is null when the previous period was zero — there is no percentage change from nothing
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        compare_start_date: Baseline start YYYY-MM-DD (default: the preceding window)
+        compare_end_date: Baseline end YYYY-MM-DD (default: the preceding window)
+        limit: Max event types per period (default 20, max 100)
+        filter_by: Optional dimension to filter on
+        filter_value: Value for filter_by
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/events/compare", {
+        "start_date": start_date, "end_date": end_date,
+        "compare_start_date": compare_start_date, "compare_end_date": compare_end_date,
+        "limit": str(limit), "filter_by": filter_by, "filter_value": filter_value,
+    })
+
+
+@mcp.tool()
+def metrik_get_goals(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    limit: int = 20,
+) -> str:
+    """Get Semust Metrik goal completions and conversion rates.
+
+    When to use: User asks about conversions, goals, signups, "how many people completed X", or conversion rate on their own analytics.
+    Do NOT use for: Raw event counts (use metrik_get_events), e-commerce orders (use metrik_get_products).
+
+    Returns: {fast_goals: {_meta, items: [{name, conversions, unique_visitors, conversion_rate}]}, visitors, event_goals?: {_meta, items: [{name, count, percentage}]}, period}
+
+    Tips:
+    - fast_goals are URL-pattern goals configured in Semust — this is what almost every customer uses
+    - event_goals are goals the site fires in code. Very few sites do, so the field is usually absent
+    - conversion_rate is unique converters divided by visitors, as a percentage
+    - Both fields absent means the project has no goals configured. Suggest setting one up in Semust > Semust Metrik > Goals rather than reporting zero conversions
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        limit: Max goals (default 20, max 100)
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/goals", {
+        "start_date": start_date, "end_date": end_date, "limit": str(limit),
+    })
+
+
+@mcp.tool()
+def metrik_get_products(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    limit: int = 20,
+    report_currency: str = "",
+) -> str:
+    """Get product-level sales from Semust Metrik e-commerce tracking.
+
+    When to use: User asks which products sell, best sellers, product revenue, or units sold.
+    Do NOT use for: Revenue by country or device (use metrik_get_revenue_breakdown), overall revenue (use metrik_get_overview).
+
+    Returns: {_meta: {total, returned, truncated}, items: [{name, revenue, units, orders, channels: [{channel, revenue}]}], daily?: {_meta, items: [{date, revenue, items, orders}]}, period}
+
+    Tips:
+    - Only projects with e-commerce tracking (e.g. an ikas store) return rows; an empty list means no sales tracking, not no sales
+    - channels shows which traffic source earned each product's revenue, attributed to the landing page
+    - Set report_currency when a store sells in more than one currency, otherwise the default scope is used
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        limit: Max products (default 20, max 100)
+        report_currency: ISO-4217 code to report in, e.g. "TRY" (optional)
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/products", {
+        "start_date": start_date, "end_date": end_date,
+        "limit": str(limit), "report_currency": report_currency,
+    })
+
+
+@mcp.tool()
+def metrik_get_revenue_breakdown(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    dimension: str = "country",
+    report_currency: str = "",
+) -> str:
+    """Break Semust Metrik revenue down by country or device.
+
+    When to use: User asks where their revenue comes from geographically, or whether phone or desktop earns more.
+    Do NOT use for: Which products sell (use metrik_get_products), traffic by country (use metrik_get_breakdown).
+
+    Returns: {_meta: {total, returned, truncated}, dimension, items: [{name, revenue, orders}], period}
+
+    Tips:
+    - dimension: "country" (default) or "device"
+    - Device values are desktop, phone and tablet
+    - Revenue is attributed to the landing page of each order, so this reconciles with metrik_get_breakdown on entry_pages
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        dimension: "country" (default) or "device"
+        report_currency: ISO-4217 code to report in (optional)
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/revenue", {
+        "start_date": start_date, "end_date": end_date,
+        "dimension": dimension, "report_currency": report_currency,
+    })
+
+
+@mcp.tool()
+def metrik_get_funnel(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    steps: str,
+) -> str:
+    """Measure a funnel you define in the conversation — no setup needed in Semust first.
+
+    When to use: User describes a sequence and wants drop-off, e.g. "how many people go from the pricing page to signup", "where do people drop off in checkout".
+    Do NOT use for: Pre-configured goals (use metrik_get_goals), the most common paths visitors actually take (use metrik_get_paths).
+
+    Returns: {steps: [{label, visitors}], period}
+
+    Tips:
+    - steps is a comma-separated, ORDERED list. A step is a URL path ("/pricing") or "goal:<name>" for a configured goal
+    - At least 2 steps, at most 100
+    - Visitors at each step are those who reached it having passed the earlier ones, so the series only ever decreases. The biggest drop between two steps is the answer the user wants
+    - If you do not know the real URL paths, call metrik_get_breakdown with dimension="top_pages" first and build the funnel from actual paths
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        steps: Ordered comma-separated steps, e.g. "/pricing,/signup,goal:Registration"
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/funnel", {
+        "start_date": start_date, "end_date": end_date, "steps": steps,
+    })
+
+
+@mcp.tool()
+def metrik_get_paths(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    limit: int = 10,
+) -> str:
+    """Get the most common page sequences visitors actually follow.
+
+    When to use: User asks "how do people move through my site", "what do visitors do after landing", or wants to discover journeys rather than test one.
+    Do NOT use for: Testing a specific sequence you already have in mind (use metrik_get_funnel), single-page metrics (use metrik_get_breakdown).
+
+    Returns: {_meta: {total, returned, truncated}, items: [{flow, pages, steps: [{label, visitors}], session_count}], period}
+
+    Tips:
+    - Ranked by how many sessions followed each path
+    - Use this to discover a funnel worth measuring, then metrik_get_funnel to quantify it
+    - Paths are aggregated across sessions; no individual visitor is identifiable here
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        limit: Max paths (default 10, max 50)
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/paths", {
+        "start_date": start_date, "end_date": end_date, "limit": str(limit),
+    })
+
+
+@mcp.tool()
+def metrik_get_web_vitals(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    metric: str = "LCP",
+) -> str:
+    """Get Core Web Vitals measured on real visitors — field data, not a lab test.
+
+    When to use: User asks about site speed, page experience, Core Web Vitals, LCP/CLS/INP, or "which pages are slow".
+    Do NOT use for: Crawl or technical SEO issues, traffic numbers (use metrik_get_overview).
+
+    Returns: {metric, summary: [{name, avg, p75, good_pct, needs_improvement_pct, poor_pct, total}], slowest_pages?: {_meta, items: [{page, p75, avg, samples, poor_count}]}, device_breakdown?: {_meta, items: [{device, browser, p75, samples}]}, period}
+
+    Tips:
+    - summary covers all five metrics at once; `metric` only selects which one slowest_pages and device_breakdown are ranked by
+    - p75 is the number Google judges you on — the 75th percentile, not the average
+    - Google's thresholds: LCP good <=2.5s, poor >4s · CLS good <=0.1, poor >0.25 · INP good <=200ms, poor >500ms · FCP good <=1.8s · TTFB good <=800ms
+    - This is real-user data from the customer's own visitors, so it reflects their actual audience's devices and networks — unlike Lighthouse
+    - A page with a bad p75 and high traffic is worth more than a worse page nobody visits
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        metric: Which metric to rank pages and devices by — "LCP" (default), "FCP", "CLS", "TTFB", "INP"
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/web-vitals", {
+        "start_date": start_date, "end_date": end_date, "metric": metric,
+    })
+
+
+@mcp.tool()
+def metrik_get_live(project_id: str) -> str:
+    """Get who is on the site RIGHT NOW, and whether the tracking script is reporting at all.
+
+    When to use: User asks "how many people are on my site", "is anyone online", "is my tracking working", or "did the script install correctly".
+    Do NOT use for: Historical visitor counts (use metrik_get_overview).
+
+    Returns: {active_visitors, recent_pages: [{url, views}], tracking: {has_data, total_events, first_event_at}}
+
+    Tips:
+    - active_visitors counts the last 5 minutes
+    - tracking.has_data=false means the script has NEVER reported — the customer created a key but did not install the snippet. Say that plainly rather than reporting zero traffic
+    - This is the right first call when any other Metrik tool comes back empty
+
+    Args:
+        project_id: Project ID from list_projects
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/live")
+
+
+@mcp.tool()
+def metrik_get_usage(project_id: str) -> str:
+    """Get this month's billable Semust Metrik event count.
+
+    When to use: User asks about their Metrik usage, event quota, "how many events this month", or billing for analytics.
+    Do NOT use for: Event breakdowns by type (use metrik_get_events).
+
+    Returns: {current_month_events}
+
+    Tips:
+    - The month is an Istanbul calendar month, matching how the plan counts it
+    - This counts every event the collector accepted, which is larger than any single event type in metrik_get_events
+
+    Args:
+        project_id: Project ID from list_projects
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/metrik/usage")
+
+
+# ─── Change Monitor ───────────────────────────────────────
+
+
+@mcp.tool()
+def changes_list(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+    limit: int = 25,
+    type: str = "",
+    severity: str = "",
+    url: str = "",
+) -> str:
+    """List what actually changed on the user's own site — titles, H1s, canonicals, schema, content, new pages.
+
+    When to use: User asks "what changed on my site", "did anything break", "what did we publish", or wants to explain a ranking or traffic move by something they did.
+    Do NOT use for: Rankings (use rank_get_keywords), traffic (use get_performance or metrik_get_overview), competitor changes.
+
+    Returns: {_meta: {total, returned, truncated}, items: [{url, change_type, severity, old_value, new_value, date}], period}
+
+    Tips:
+    - THIS IS THE TOOL NO OTHER SEO PLATFORM HAS. Rankings and traffic tell you something moved; this tells you what you did. Reach for it whenever the user asks "why" about a change in performance
+    - change_type values: title, h1, meta_description, canonical, robots_meta, hreflang, redirect, status_code, schema, og_tags, word_count, content_other, internal_links, new_url
+    - severity: critical, warning, info. A critical change on a page that then lost rankings is the strongest signal you can give
+    - old_value/new_value are truncated to 300 characters — enough to see the kind of edit, not the whole page
+    - Dates are Istanbul calendar days, the same buckets metrik_* and changes_daily use
+    - Baseline rows (the first crawl's page inventory) are excluded, so everything here is a real edit
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+        limit: Max changes (default 25, max 100)
+        type: Comma-separated change types to filter by (optional)
+        severity: Comma-separated severities — critical, warning, info (optional)
+        url: Only changes whose URL contains this text (optional)
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/change-monitor/changes", {
+        "start_date": start_date, "end_date": end_date, "limit": str(limit),
+        "type": type, "severity": severity, "url": url,
+    })
+
+
+@mcp.tool()
+def changes_daily(
+    project_id: str,
+    start_date: str,
+    end_date: str,
+) -> str:
+    """Get how much the site changed each day — the series to line up against traffic or rankings.
+
+    When to use: User asks "why did traffic drop", "did my change work", "when did we touch the site", or any question connecting site edits to performance.
+    Do NOT use for: What specifically changed (use changes_list once you know the day).
+
+    Returns: {days: [{date, total, critical, warning, info, urls, dismissed, top_types: [{type, count}], scanned}], totals: {...}, period, reading_the_days}
+
+    Tips:
+    - THE WORKFLOW THAT MAKES THIS PLATFORM DIFFERENT: get the traffic series (get_performance or metrik_get_timeseries), get this one, and find the day traffic moved. Then call changes_list for that day to name the edits. No other SEO tool can do this because no other tool watches the site and the rankings and the traffic
+    - Days use the same Istanbul calendar buckets as the traffic tools, so the two series align directly — do not shift dates
+    - CRITICAL: a day listed with total 0 was scanned and nothing changed. A day MISSING from the list was never scanned. Never report a missing day as "no changes" — say the site was not checked that day
+    - Search Console reports with a 2-day delay while changes are recorded the day they happen, so expect the traffic effect to appear a couple of days after the change date
+
+    Args:
+        project_id: Project ID from list_projects
+        start_date: Start date YYYY-MM-DD
+        end_date: End date YYYY-MM-DD
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/change-monitor/daily", {
+        "start_date": start_date, "end_date": end_date,
+    })
+
+
+# ─── Competitor Analysis ──────────────────────────────────
+
+
+@mcp.tool()
+def competitor_list_analyses(project_id: str, limit: int = 10) -> str:
+    """List the competitor keyword-gap analyses this project has already run.
+
+    When to use: User asks about competitors, keyword gaps, "who am I competing with", or what their last competitor analysis found.
+    Do NOT use for: Competitors cited in AI Overviews (use ai_rank_get_domains), backlink competitors.
+
+    Returns: {_meta: {total, returned, truncated}, items: [{analysis_id, status, own_domain, competitors, gap_count, shared_count}]}
+
+    Tips:
+    - Start here, then competitor_get_analysis with an analysis_id for the actual keywords
+    - gap_count is keywords the competitors rank for and this site does not — the opportunity
+    - shared_count is keywords both rank for — where the fight already is
+    - An empty list means the project has never run one. Offer competitor_get_status to tell them what it would cost; do not treat it as an error
+
+    Args:
+        project_id: Project ID from list_projects
+        limit: Max analyses (default 10, max 50)
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/competitors/analyses", {
+        "limit": str(limit),
+    })
+
+
+@mcp.tool()
+def competitor_get_analysis(project_id: str, analysis_id: str, limit: int = 50) -> str:
+    """Get one competitor analysis in full — the keyword matrix, the gaps, the per-domain picture.
+
+    When to use: User wants the actual keywords from a competitor analysis, "what are my gaps", "what do they rank for that I don't".
+    Do NOT use for: Their own rankings (use rank_get_keywords), their own Search Console keywords (use get_keywords).
+
+    Returns: {analysis_id, status, own_domain, competitors, gap_count, shared_count, domains: [...], matrix: [...], _meta: {total, returned, truncated}}
+
+    Tips:
+    - matrix is one row per keyword across every competitor; it is capped, so check _meta.truncated and raise limit if the user wants more
+    - Gaps with high volume and low difficulty are the useful recommendation, not the longest list
+    - Cross-check a promising gap keyword against get_keywords: if it already has impressions, the page exists and needs work rather than creation
+
+    Args:
+        project_id: Project ID from list_projects
+        analysis_id: Analysis ID from competitor_list_analyses
+        limit: Max keyword rows (default 50, max 200)
+    """
+    return api_get(
+        f"/projects/{_safe_project_id(project_id)}/competitors/analyses/{analysis_id}",
+        {"limit": str(limit)},
+    )
+
+
+@mcp.tool()
+def competitor_get_status(project_id: str) -> str:
+    """Check what a NEW competitor analysis would cost and whether the project has the credits.
+
+    When to use: User asks to run a new competitor analysis, asks what one costs, or asks how many competitor credits they have left.
+    Do NOT use for: Reading past results (use competitor_list_analyses).
+
+    Returns: {can_run, reason, own_domain, saved_set, credits_cost, credits_balance, has_credits, cached_domains, max_competitors, how_to_run}
+
+    Tips:
+    - YOU CANNOT START A RUN. These tools are read-only by design, because a run spends real money. Report the cost and the balance, then tell the user to run it in Semust > Project > Competitor Analysis
+    - credits_cost is quoted for saved_set, the competitor list from their last run
+    - A cost of 0 does NOT mean the feature is free. Domains in cached_domains were paid for recently and are not billed again; a run with NEW competitors will cost credits. Say "free right now because these domains are cached", never "this is free"
+    - If has_credits is false, say how many they are short rather than just "not enough"
+    - reason explains a false can_run — no domain configured, trial limits, or a run already in progress
+
+    Args:
+        project_id: Project ID from list_projects
+    """
+    return api_get(f"/projects/{_safe_project_id(project_id)}/competitors/status")
 
 
 # ─── Main ─────────────────────────────────────────────────
