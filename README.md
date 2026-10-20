@@ -1,10 +1,10 @@
 # Semust MCP Server
 
-[![Version 1.4.1](https://img.shields.io/badge/version-1.4.1-blue.svg)](CHANGELOG.md)
+[![Version 1.7.0](https://img.shields.io/badge/version-1.7.0-blue.svg)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Ask Claude about your SEO and advertising data in plain language.** This MCP server connects Claude Desktop (and Claude Code, and Cursor) to your [Semust](https://semust.com) account — keywords, pages, traffic trends, SEO reports, Google Analytics, Google Ads, Yandex Metrica, Bing Webmaster, and more.
+**Ask Claude about your SEO and advertising data in plain language.** This MCP server connects Claude Desktop (and Claude Code, and Cursor) to your [Semust](https://semust.com) account — keywords, pages, traffic trends, SEO reports, Semust Metrik, Google Analytics, Google Ads, Yandex Metrica, Bing Webmaster, and more.
 
 > "Show me my top keywords for the last month"
 >
@@ -79,6 +79,18 @@ Once set up, just talk to Claude naturally:
 - "What are people searching on Yandex?"
 - "Show me traffic sources from Yandex"
 
+**Semust Metrik** (our own analytics — real time)
+- "How is my site doing this month?"
+- "Which day did my traffic drop?"
+- "Where does my traffic come from?"
+- "Are people clicking more than last month?"
+- "Who is on my site right now?"
+- "Which pages are slow for real visitors?"
+- "How many people go from pricing to signup?"
+- "What changed on my site last week?"
+- "Why did my traffic drop — did we change something?"
+- "What keywords do my competitors rank for that I don't?"
+
 **Bing Webmaster**
 - "How are my pages doing on Bing?"
 - "Show me Bing crawl issues"
@@ -114,7 +126,9 @@ Once set up, just talk to Claude naturally:
 
 Log in to [Semust](https://semust.com) > Settings > API Key > Copy.
 
-Make sure you have at least one project with **Google Search Console connected**.
+Make sure you have at least one project with **Google Search Console connected**, or with
+**Semust Metrik** installed — the `metrik_*` tools need only our own tracking script, no
+third-party integration at all.
 
 ### Step 2: Download & Install
 
@@ -209,7 +223,13 @@ Add `mcpServers` to the file. If the file already has content, **merge** this in
         "ym_get_geo", "ym_get_devices", "ym_get_search_phrases",
         "bing_get_query_stats", "bing_get_page_stats", "bing_get_crawl_stats",
         "bing_get_crawl_issues", "bing_get_rank_traffic", "bing_get_link_counts",
-        "bing_get_keyword_stats", "bing_get_url_traffic", "bing_get_url_links"
+        "bing_get_keyword_stats", "bing_get_url_traffic", "bing_get_url_links",
+        "metrik_get_overview", "metrik_get_timeseries", "metrik_get_breakdown",
+        "metrik_get_events", "metrik_compare_events", "metrik_get_goals",
+        "metrik_get_products", "metrik_get_revenue_breakdown", "metrik_get_funnel",
+        "metrik_get_paths", "metrik_get_web_vitals", "metrik_get_live",
+        "metrik_get_usage", "changes_list", "changes_daily",
+        "competitor_list_analyses", "competitor_get_analysis", "competitor_get_status"
       ]
     }
   }
@@ -250,7 +270,13 @@ Add `mcpServers` to the file. If the file already has content, **merge** this in
         "ym_get_geo", "ym_get_devices", "ym_get_search_phrases",
         "bing_get_query_stats", "bing_get_page_stats", "bing_get_crawl_stats",
         "bing_get_crawl_issues", "bing_get_rank_traffic", "bing_get_link_counts",
-        "bing_get_keyword_stats", "bing_get_url_traffic", "bing_get_url_links"
+        "bing_get_keyword_stats", "bing_get_url_traffic", "bing_get_url_links",
+        "metrik_get_overview", "metrik_get_timeseries", "metrik_get_breakdown",
+        "metrik_get_events", "metrik_compare_events", "metrik_get_goals",
+        "metrik_get_products", "metrik_get_revenue_breakdown", "metrik_get_funnel",
+        "metrik_get_paths", "metrik_get_web_vitals", "metrik_get_live",
+        "metrik_get_usage", "changes_list", "changes_daily",
+        "competitor_list_analyses", "competitor_get_analysis", "competitor_get_status"
       ]
     }
   }
@@ -302,7 +328,7 @@ Type: **"Show me my projects"** — Claude should list your Semust projects.
 
 ---
 
-## Available Tools (56)
+## Available Tools (74)
 
 ### Projects
 | Tool | Description |
@@ -395,6 +421,46 @@ Type: **"Show me my projects"** — Claude should list your Semust projects.
 | `ym_get_devices` | Device/browser/OS breakdown |
 | `ym_get_search_phrases` | Yandex search keywords driving visits |
 
+### Semust Metrik
+First-party analytics from Semust's own tracking script. Real time — unlike every other
+source here, today's data is available today. Aggregate only: individual visitor
+profiles and session journeys are deliberately not exposed.
+
+| Tool | Description |
+|------|-------------|
+| `metrik_get_overview` | Visitors, visits, pageviews, bounce rate, duration — with period-over-period change |
+| `metrik_get_timeseries` | Daily series, one row per day |
+| `metrik_get_breakdown` | Any dimension: pages, sources, channels, UTM, countries, cities, devices, browsers, OS |
+| `metrik_get_events` | Event counts by type — clicks, form submits, outbound links |
+| `metrik_compare_events` | Event counts across two periods, with change and percentage |
+| `metrik_get_goals` | Goal completions and conversion rates |
+| `metrik_get_products` | Product-level sales, units and revenue |
+| `metrik_get_revenue_breakdown` | Revenue by country or device |
+| `metrik_get_funnel` | A funnel defined in the conversation, measured on the spot |
+| `metrik_get_paths` | The page sequences visitors actually follow |
+| `metrik_get_web_vitals` | Core Web Vitals from real visitors — LCP, CLS, INP, FCP, TTFB |
+| `metrik_get_live` | Active visitors right now, plus whether the script has ever reported |
+| `metrik_get_usage` | This month's billable event count |
+
+### Change Monitor
+What changed on your own site — the signal no third-party SEO tool has. Pair it with the
+traffic tools to turn "rankings moved" into "rankings moved after you edited these pages".
+
+| Tool | Description |
+|------|-------------|
+| `changes_list` | Detected changes: titles, H1s, canonicals, schema, content, new pages |
+| `changes_daily` | How much the site changed each day — the series to align with traffic |
+
+### Competitor Analysis
+Read-only. A new analysis spends credits, so only the user can start one — these tools
+show what has already been run, and quote what a new run would cost.
+
+| Tool | Description |
+|------|-------------|
+| `competitor_list_analyses` | Past keyword-gap analyses with gap and shared counts |
+| `competitor_get_analysis` | One analysis in full — the keyword matrix and per-domain picture |
+| `competitor_get_status` | What a new run would cost and whether the credits are there |
+
 ### Bing Webmaster
 | Tool | Description |
 |------|-------------|
@@ -481,8 +547,10 @@ picking the block that matches your operating system.
 | "Google Ads not connected" | Connect Google Ads in Semust > Project Settings > Integrations |
 | "Yandex Metrica not connected" | Connect Yandex Metrica in Semust > Project Settings > Integrations |
 | "Bing Webmaster not connected" | Connect Bing Webmaster in Semust > Project Settings > Integrations |
+| "Semust Metrik is not active" | Create a tracking key in Semust > Project Settings > Semust Metrik, then install the script on your site |
+| Metrik tools return zeros | Ask Claude to check `metrik_get_live`. If `tracking.has_data` is false the key exists but the script was never installed — that is not the same as having no traffic |
 | Claude asks permission for every tool | Add `alwaysAllow` to your config (see Step 3 above) |
-| No data / empty results | GSC data has a 2-day delay — Claude handles this automatically |
+| No data / empty results | GSC data has a 2-day delay — Claude handles this automatically. Semust Metrik has no delay; today's data is available today |
 | Config file not found | Make sure Claude Desktop is installed and has been opened at least once |
 
 ---
@@ -492,7 +560,7 @@ picking the block that matches your operating system.
 - [Python 3.10+](https://www.python.org/downloads/)
 - [Claude Desktop](https://claude.ai/download), [Claude Code](https://claude.com/claude-code), or [Cursor](https://cursor.sh)
 - A [Semust](https://semust.com) account with an active subscription
-- Google Search Console, Google Analytics, Google Ads, Yandex Metrica, and/or Bing Webmaster connected to at least one project
+- Semust Metrik installed, and/or Google Search Console, Google Analytics, Google Ads, Yandex Metrica or Bing Webmaster connected, on at least one project
 
 ## License
 
