@@ -1,10 +1,10 @@
 # Semust MCP Server
 
-[![Version 1.7.0](https://img.shields.io/badge/version-1.7.0-blue.svg)](CHANGELOG.md)
+[![Version 1.8.0](https://img.shields.io/badge/version-1.8.0-blue.svg)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Ask Claude about your SEO and advertising data in plain language.** This MCP server connects Claude Desktop (and Claude Code, and Cursor) to your [Semust](https://semust.com) account — keywords, pages, traffic trends, SEO reports, Semust Metrik, Google Analytics, Google Ads, Yandex Metrica, Bing Webmaster, and more.
+**Ask Claude about your SEO and advertising data in plain language.** This MCP server connects Claude Desktop (and Claude Code, and Cursor) to your [Semust](https://semust.com) account — keywords, pages, traffic trends, SEO reports, Semust Metrik, Google Analytics, Google Ads, Yandex Metrica, Bing Webmaster, and more. It can also draft and schedule your posts to LinkedIn, Facebook Pages and Instagram — always after you approve them.
 
 > "Show me my top keywords for the last month"
 >
@@ -15,6 +15,8 @@
 > "Which landing pages convert best?"
 >
 > "How are my Google Ads campaigns performing?"
+>
+> "Write a LinkedIn post about this month's results and schedule it for Monday 10:00"
 
 ---
 
@@ -118,13 +120,24 @@ Once set up, just talk to Claude naturally:
 - "What questions are people asking that lead to my site?"
 - "Show me long-tail keywords with 4+ words"
 
+**Social Media** (needs an MCP key with posting switched on — see Step 1)
+- "Write a LinkedIn post about our new blog article and schedule it for tomorrow 10:00"
+- "What is scheduled on our company page this week?"
+- "Move Thursday's post to Friday at the same time"
+- "Which posts failed, and why?"
+
 ---
 
 ## Quick Start
 
 ### Step 1: Get Your API Key
 
-Log in to [Semust](https://semust.com) > Settings > API Key > Copy.
+Log in to [Semust](https://semust.com) > **Ayarlar > MCP Kurulumu** and create an **MCP key**.
+Switch on **"Sosyal medyada paylaşım yapabilir"** only if Claude should be able to draft and
+schedule your social posts; leave it off for read-only use. The key is shown once — copy it.
+
+Social media tools work only with an MCP key. The older account API key still works for the
+read-only data tools, but not for social media.
 
 Make sure you have at least one project with **Google Search Console connected**, or with
 **Semust Metrik** installed — the `metrik_*` tools need only our own tracking script, no
@@ -229,7 +242,8 @@ Add `mcpServers` to the file. If the file already has content, **merge** this in
         "metrik_get_products", "metrik_get_revenue_breakdown", "metrik_get_funnel",
         "metrik_get_paths", "metrik_get_web_vitals", "metrik_get_live",
         "metrik_get_usage", "changes_list", "changes_daily",
-        "competitor_list_analyses", "competitor_get_analysis", "competitor_get_status"
+        "competitor_list_analyses", "competitor_get_analysis", "competitor_get_status",
+        "social_get_accounts", "social_list_posts", "social_get_post"
       ]
     }
   }
@@ -276,7 +290,8 @@ Add `mcpServers` to the file. If the file already has content, **merge** this in
         "metrik_get_products", "metrik_get_revenue_breakdown", "metrik_get_funnel",
         "metrik_get_paths", "metrik_get_web_vitals", "metrik_get_live",
         "metrik_get_usage", "changes_list", "changes_daily",
-        "competitor_list_analyses", "competitor_get_analysis", "competitor_get_status"
+        "competitor_list_analyses", "competitor_get_analysis", "competitor_get_status",
+        "social_get_accounts", "social_list_posts", "social_get_post"
       ]
     }
   }
@@ -295,7 +310,7 @@ Add `mcpServers` to the file. If the file already has content, **merge** this in
 > not recognised, use the full Python path instead, e.g.
 > `C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe`
 >
-> **`alwaysAllow`**: This list lets Claude use Semust tools without asking for permission each time. All tools are read-only and safe to auto-approve. Remove this field if you prefer to approve each tool call manually.
+> **`alwaysAllow`**: This list lets Claude use Semust tools without asking for permission each time. Every tool in it is read-only. The social tools that create, change, publish or delete posts (`social_create_post`, `social_update_post`, `social_delete_post`, `social_retry_post`, `social_import_media`) are **deliberately left out**, so Claude asks you before each one — keep it that way. Remove this field if you prefer to approve every tool call manually.
 
 **Quit Claude Desktop completely** and reopen it — on Windows right-click the system tray icon >
 Quit, on macOS press <kbd>Cmd</kbd>+<kbd>Q</kbd> or choose Claude > Quit. Closing the window is not
@@ -303,7 +318,7 @@ enough on either.
 
 ### Step 4: Verify
 
-In a new Claude chat, look for the **tools icon** (hammer/wrench) near the text input. Click it — you should see "semust-mcp" with 56 tools.
+In a new Claude chat, look for the **tools icon** (hammer/wrench) near the text input. Click it — you should see "semust-mcp" with 82 tools.
 
 Type: **"Show me my projects"** — Claude should list your Semust projects.
 
@@ -324,11 +339,12 @@ Type: **"Show me my projects"** — Claude should list your Semust projects.
 - The `.env` file is in `.gitignore` — it won't be accidentally committed to git
 - The server refuses to start if `SEMUST_BASE_URL` is `http://` (non-localhost) — your key is never sent in plaintext
 - **Protect your Claude Desktop config file** — anyone with read access to it can read your API key
+- **Social posting is opt-in per key.** Only an MCP key created with "Sosyal medyada paylaşım yapabilir" can create or change posts. Claude checks every post with a dry run and asks you before it schedules or publishes anything. Semust also shows an in-app notice, with a cancel link, for every post an AI assistant schedules. Revoking the key in Semust cancels everything it queued
 - SEO data passed to Claude is treated as user-trusted content; if your Search Console contains spam queries with embedded instructions, the model may act on them — this is inherent to all MCP tools that surface third-party data
 
 ---
 
-## Available Tools (74)
+## Available Tools (82)
 
 ### Projects
 | Tool | Description |
@@ -461,6 +477,21 @@ show what has already been run, and quote what a new run would cost.
 | `competitor_get_analysis` | One analysis in full — the keyword matrix and per-domain picture |
 | `competitor_get_status` | What a new run would cost and whether the credits are there |
 
+### Social Media — LinkedIn, Facebook Pages, Instagram
+Needs an MCP key; the write tools need one with "Sosyal medyada paylaşım yapabilir". Claude
+validates each post with a dry run and asks before scheduling or publishing.
+
+| Tool | Description |
+|------|-------------|
+| `social_get_accounts` | Connected profiles and pages to post to, with each platform's limits |
+| `social_list_posts` | Drafts, the queue, published and failed posts |
+| `social_get_post` | One post: each destination's status and the live post link |
+| `social_create_post` | Draft, schedule or publish now (dry run by default) |
+| `social_update_post` | Change the text, time or destinations of a draft or scheduled post |
+| `social_delete_post` | Delete a post and cancel what has not been published yet |
+| `social_retry_post` | Try failed deliveries again |
+| `social_import_media` | Upload an image (or a LinkedIn PDF) from a public URL for a post |
+
 ### Bing Webmaster
 | Tool | Description |
 |------|-------------|
@@ -519,7 +550,7 @@ claude mcp add --scope user semust -- /path/to/semust-mcp/.venv/bin/python /path
 
 **Verify:** run `claude mcp list` — you should see `semust: ... - ✔ Connected`. Inside Claude Code,
 reload the window (VS Code: **Developer: Reload Window**) or restart the CLI, then type `/mcp` to
-see the server and its 56 tools. Ask **"Show me my Semust projects"** to confirm it works.
+see the server and its 82 tools. Ask **"Show me my Semust projects"** to confirm it works.
 
 ---
 
@@ -541,6 +572,10 @@ picking the block that matches your operating system.
 | `python` not recognized | On macOS/Linux use `python3` (`which python3` gives the full path); on Windows use the full path to `python.exe` (see Step 3) |
 | Server fails to start, path not found | The path in `args` must be absolute and match your OS — `/Users/you/...` on macOS, `C:\\Users\\you\\...` on Windows. `~` is not expanded |
 | "Invalid API key" (401) | Double-check your key in [Semust Settings](https://semust.com) |
+| `scoped_key_required` or `write_scope_required` | Social media needs an MCP key: Semust > Ayarlar > MCP Kurulumu > create one with "Sosyal medyada paylaşım yapabilir" switched on, put it in your config, restart Claude |
+| `wrong_key_type` | You pasted a Looker Studio key. Create an MCP key in Semust > Ayarlar > MCP Kurulumu |
+| `platform_coming_soon` | Facebook and Instagram posting opens after Meta's review; LinkedIn works now |
+| `ImportError: cannot import name 'eval_type_backport'` | Your `mcp` package is too old for the pydantic you have. Run `pip install -U -r requirements.txt` |
 | "User not active" (403) | You need a paid plan — [semust.com/fiyatlar](https://semust.com/fiyatlar) |
 | "Search Console not connected" | Connect GSC in Semust > Project Settings > Integrations |
 | "Google Analytics not connected" | Connect GA4 in Semust > Project Settings > Integrations |
@@ -561,6 +596,7 @@ picking the block that matches your operating system.
 - [Claude Desktop](https://claude.ai/download), [Claude Code](https://claude.com/claude-code), or [Cursor](https://cursor.sh)
 - A [Semust](https://semust.com) account with an active subscription
 - Semust Metrik installed, and/or Google Search Console, Google Analytics, Google Ads, Yandex Metrica or Bing Webmaster connected, on at least one project
+- For social media: a LinkedIn, Facebook Page or Instagram account connected in Semust > Sosyal Medya, and an MCP key
 
 ## License
 
