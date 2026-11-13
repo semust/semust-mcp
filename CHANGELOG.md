@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.8.0] - 2026-11-13
+
+### Added — Social Media Tools (8): LinkedIn, Facebook Pages, Instagram
+- `social_get_accounts` — the profiles and pages a project can post to, each platform's limits, the server time and the user's timezone
+- `social_list_posts` — drafts, the queue, published and failed posts, filterable by status, platform, text and time
+- `social_get_post` — one post with each destination's status and the live post link
+- `social_create_post` — save a draft, schedule, or publish now; **a dry run unless `dry_run=false`**
+- `social_update_post` — change only the fields given (fixing a typo keeps the post scheduled)
+- `social_delete_post` — delete a post and cancel what has not been published
+- `social_retry_post` — re-queue failed deliveries
+- `social_import_media` — upload an image (or a LinkedIn PDF) from a public URL
+
+### Posting needs the user's yes
+These tools publish in the user's name, so several layers decide whether a post goes out:
+- **The key.** Only an MCP key created with "Sosyal medyada paylaşım yapabilir" can write. The old account key cannot use social tools at all, because it sits on WordPress sites.
+- **The model.** `dry_run` defaults to true, and the server instructions require showing the exact post and getting an explicit yes before scheduling or publishing.
+- **The client.** The tools carry MCP annotations (read-only, destructive, open-world). The README's `alwaysAllow` list includes only the three read tools, so Claude asks before every write.
+- **Semust.** The backend validates every post against the platform's limits. It answers a repeated identical call with the post it already made, caps writes per key, sends the user an in-app notice with a cancel link for each AI-scheduled post, and unschedules everything a key queued when the key is revoked.
+
+### Changed
+- Every request sends `X-Semust-MCP-Version`. An outdated install can then be told about new releases through `list_projects`.
+- API errors now come back as `<code>: <message>` (e.g. `write_scope_required: ...`), so the instructions' ERROR HANDLING rules match on the code.
+- `requirements.txt`: `mcp>=1.21.2`. Tool annotations need 1.7.0, and every mcp up to 1.21.0 fails to import with pydantic 2.14 (`eval_type_backport` was removed), so a fresh install of those would not start. Tested on mcp 1.21.2, 1.30.0 and 2.3.0.
+- `list_projects` documents the new `linkedin`, `facebook_pages` and `instagram` integration statuses and the optional `notice` field.
+
+### Tests
+- `tests/test_social_tools.py` runs every social tool against a fake API on localhost. It checks:
+  - the method, path, query and body of each request;
+  - the key and version headers;
+  - that `dry_run` defaults to true;
+  - that a partial update sends only the fields given;
+  - that ids are checked before they reach a URL;
+  - the error format;
+  - the annotations.
+
+  Run it with `python -m unittest discover -s tests`.
+
+---
+
 ## [1.7.0] - 2026-10-19
 
 ### Added — Competitor Analysis Tools (3)
