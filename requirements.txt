@@ -1,3 +1,6 @@
-mcp>=1.0.0
+# 1.21.2 is the oldest mcp that both has tool annotations (1.7.0+) and still imports
+# with current pydantic: 1.21.0 and older import a private pydantic helper that
+# pydantic 2.14 removed, so a fresh install of them fails at startup.
+mcp>=1.21.2
 requests>=2.32.0
 python-dotenv>=1.0.0
