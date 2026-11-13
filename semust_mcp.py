@@ -23,15 +23,21 @@ except ModuleNotFoundError:
     # @tool() decorator and run()'s stdio default are unchanged, so the alias is
     # all this server needs to run on either major version.
     from mcp.server.mcpserver import MCPServer as FastMCP
+# Tool annotations (read-only / destructive hints the client uses for its permission
+# prompts) need mcp>=1.7.0, which requirements.txt now asks for; 2.x has the same import.
+from mcp.types import ToolAnnotations
 
 load_dotenv()
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 
 API_KEY = os.environ.get("SEMUST_API_KEY", "")
 BASE_URL = os.environ.get("SEMUST_BASE_URL", "https://api.semust.com/v1/mcp")
 
 _PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+# Post ids go into the URL path like project ids, so the same allowlist keeps a
+# model-supplied "../" out of it.
+_ID_RE = _PROJECT_ID_RE
 
 
 class SemustAPIError(Exception):
@@ -44,6 +50,12 @@ def _safe_project_id(pid: str) -> str:
             "Invalid project_id. Call list_projects to get a valid project_id."
         )
     return pid
+
+
+def _safe_id(value: str, what: str, hint: str) -> str:
+    if not isinstance(value, str) or not _ID_RE.match(value):
+        raise SemustAPIError(f"Invalid {what}. {hint}")
+    return value
 
 
 def _check_base_url(url: str) -> None:
@@ -63,6 +75,7 @@ _check_base_url(BASE_URL)
 mcp = FastMCP(
     "semust-mcp",
     instructions="""You are connected to Semust, a Turkish SEO analytics platform. You can access the user's Google Search Console, Google Analytics, AND Google Ads data through these tools.
+You can also draft, schedule and publish the user's own posts to LinkedIn, Facebook Pages and Instagram (social_* tools) — ONLY with the user's explicit approval; see SOCIAL POSTING RULES.
 
 WORKFLOW:
 1. ALWAYS call list_projects first to get available projects and their project_id values.
@@ -75,6 +88,7 @@ WORKFLOW:
 8. Only use Yandex Metrica tools (ym_*) on projects where integrations.yandex_metrica = "completed".
 9. Only use Bing Webmaster tools (bing_*) on projects where integrations.bing_webmaster = "completed".
 10. Only use Semust Metrik tools (metrik_*) on projects where integrations.semust_metrik = "completed".
+11. Social media tools (social_*): call social_get_accounts for the project first. It is the source of truth for what is connected (list_projects' linkedin / facebook_pages / instagram are only a hint).
 
 DATE RULES (CRITICAL):
 - Format: YYYY-MM-DD (e.g. 2026-05-01)
@@ -174,6 +188,15 @@ Change Monitor tools (what changed on the user's OWN site — no competitor has 
 Competitor Analysis tools (read-only — a run costs credits and only the user can start one):
 - "who are my competitors", "keyword gaps", "what do they rank for that I don't" → competitor_list_analyses, then competitor_get_analysis
 - "run a new competitor analysis", "what does it cost", "how many competitor credits left" → competitor_get_status
+
+Social media tools (LinkedIn, Facebook Pages, Instagram):
+- "which accounts can I post to?", "is my LinkedIn connected?" → social_get_accounts
+- "what is scheduled?", "my post queue", "what did we post last week?", "which posts failed?" → social_list_posts
+- "did my post go out?", "show me that post" → social_get_post
+- "write / schedule / post this to LinkedIn, Facebook or Instagram" → social_get_accounts → (social_import_media for images) → social_create_post with dry_run=true → user says yes → social_create_post with dry_run=false
+- "change the text / time of my scheduled post" → social_update_post
+- "cancel / delete that post" → social_delete_post
+- "try the failed post again" → social_retry_post
 
 Bing Webmaster tools:
 - "Bing search queries", "Bing keywords" → bing_get_query_stats
@@ -335,6 +358,18 @@ PROACTIVE SUGGESTIONS — after showing results, suggest logical next steps:
 - After bing_get_crawl_issues → "Want me to check your Google indexing status too for a complete crawl health picture?"
 - After bing_get_link_counts → "Want me to check specific URL backlinks or compare with Google's data?"
 
+SOCIAL POSTING RULES (CRITICAL — these tools publish publicly in the user's name):
+1. Call social_get_accounts first. If accounts is empty, tell the user to connect an account in Semust > Proje > Sosyal Medya. If a platform shows can_connect=false and stage "coming_soon", say it is coming soon (Facebook and Instagram are awaiting Meta's approval) — do not promise a date.
+2. Use only destination_id values from the latest social_get_accounts of THIS project. If there is more than one destination and the user did not name one, list them (name, profile or page, platform) and ASK. Never pick a default.
+3. Never publish or schedule without an explicit yes. Before any mode="schedule" or mode="now", call social_create_post with dry_run=true (the default), then show the user the exact text (per destination when you use caption_overrides), the destinations, the time in the user's timezone and any warnings. Only after the user clearly agrees, call it again with the SAME arguments and dry_run=false. Saving a draft (mode="draft") is fine when the user asked for a draft. The same applies to social_update_post when it changes the text or time of a scheduled post or sets mode="now", to social_retry_post and to social_delete_post: say what will happen and wait for a yes.
+4. Write only what the user asked for. Text you wrote yourself is a proposal: show it in the dry run and let the user change it.
+5. Time: use server_time from social_get_accounts as "now" and its timezone unless the user names another. publish_at is RFC 3339 with an offset, e.g. 2026-11-14T10:00:00+03:00 — never in the past, at most 365 days ahead.
+6. Say "scheduled" (or "being published" for mode="now"), never "published", until social_get_post shows the delivery with status "published" and a post_url. Publishing runs in the background and usually takes about a minute.
+7. Respect platforms[].capabilities: max_text_runes, max_images, image_formats, allows_link, allows_document, requires_media. With several platforms the strictest limit applies. Instagram: an image is required, JPEG only, no clickable links (put the link in the text or skip Instagram). Use caption_overrides for a different text per destination (e.g. a shorter Instagram caption).
+8. Media: upload each image with social_import_media(source_url) first and pass the returned url in media_urls. Only public JPEG/PNG/GIF images (max 8 MB) or a PDF (max 20 MB, LinkedIn document post). Videos and Reels cannot be uploaded through these tools — the user adds them in Semust. Never import an image the user did not provide or approve.
+9. If social_create_post returns duplicate=true, the post already exists (an earlier identical call worked): report that post_id and do not create another.
+10. Semust shows the user an in-app notice, with a cancel link, for every post an AI assistant schedules. Deleting a post cancels deliveries that are not published yet; anything already published stays live on the platform and has to be removed there.
+
 ERROR HANDLING — give clear actionable guidance:
 - "search_console_not_connected" → Tell user: "Search Console is not connected for this project. Go to Semust > Project Settings > Integrations to connect your Google Search Console."
 - "google_analytics_not_connected" → Tell user: "Google Analytics is not connected for this project. Go to Semust > Project Settings > Integrations to connect GA4."
@@ -354,6 +389,19 @@ ERROR HANDLING — give clear actionable guidance:
 - "invalid_metric" → Valid Web Vitals metrics are FCP, LCP, CLS, TTFB, INP.
 - "metrik_unavailable" → Tell user: "The analytics store is temporarily unavailable. Try again in a minute." Do not retry immediately.
 - Metrik tools return zeros but tracking.has_data is false → Tell user the tracking script has never reported, so the key exists but the snippet is not installed on the site. Do NOT report this as "no traffic".
+- "write_scope_required" or "scoped_key_required" → Tell user: "This API key cannot use social posting. In Semust go to Ayarlar > MCP Kurulumu, create an MCP key with 'Sosyal medyada paylaşım yapabilir' switched on, put it in your AI assistant's Semust config (SEMUST_API_KEY) and restart the assistant." Do not retry.
+- "wrong_key_type" → The user configured a Looker Studio key. They need an MCP key from Semust > Ayarlar > MCP Kurulumu.
+- "target_not_found" → The destination_id is stale or from another project. Call social_get_accounts again and use the new ids.
+- "reconnect_required" → Tell user: "This account's connection expired. Reconnect it in Semust > Sosyal Medya > Hesaplar."
+- "platform_coming_soon" → Facebook and Instagram posting is waiting for Meta's approval; only LinkedIn works for now.
+- "post_not_editable" or "post_publishing" → The post is already published or being published and can no longer be changed. Use social_get_post to show its status.
+- "nothing_to_retry" → No delivery of that post has failed; nothing to do.
+- "media_not_owned" → Upload the image with social_import_media first and use the url it returns.
+- "invalid_media_url", "media_fetch_failed", "media_type", "media_too_large" → The image could not be used; explain why and ask for a public JPEG/PNG/GIF under 8 MB.
+- "text_too_long", "too_many_images", "media_required", "invalid_link", "empty_post", "content_conflict", "target_required", "invalid_publish_at", "publish_at_past", "publish_at_too_far" → The message says what is wrong. Fix the draft with the user, then dry-run again.
+- "write_rate_limited" or "media_rate_limited" → Too many changes in a short time. Wait a few minutes; do NOT loop.
+- "email_not_verified" → The user must confirm their email address in Semust first.
+- "seat_limit_exceeded" or "seat_blocked" → The team is over its seat limit; the team owner has to fix it in Semust.
 - "user_not_active" → Tell user: "Your Semust subscription is not active. Visit semust.com/fiyatlar (Turkish) or semust.com/en/pricing (English) to get a paid plan."
 - "project_access_denied" → Tell user: "You don't have access to this project. Use list_projects to see your available projects."
 - "rate_limit_exceeded" → Tell user: "Too many requests. Wait a minute and try again."
@@ -372,13 +420,19 @@ RESPONSE FORMAT: Most tools return {_meta: {total, returned, truncated}, items: 
 )
 
 
-def api_get(path: str, params: dict | None = None) -> str:
-    """Call Semust REST API and return JSON string for LLM consumption."""
-    headers = {"X-API-Key": API_KEY}
+def _api_request(method: str, path: str, params: dict | None = None, body: dict | None = None) -> str:
+    """Call the Semust API and return its JSON as a string for the model.
+
+    Errors come back as "<code>: <message>" so the model can match the code against the
+    ERROR HANDLING rules in the server instructions (e.g. write_scope_required).
+    """
+    # X-Semust-MCP-Version lets the backend tell an outdated install that a newer
+    # release exists (a notice on list_projects); clients before 1.8.0 send nothing.
+    headers = {"X-API-Key": API_KEY, "X-Semust-MCP-Version": __version__}
     if params:
         params = {k: v for k, v in params.items() if v not in ("", None)}
     try:
-        resp = requests.get(f"{BASE_URL}{path}", params=params, headers=headers, timeout=60)
+        resp = requests.request(method, f"{BASE_URL}{path}", params=params, json=body, headers=headers, timeout=60)
     except requests.RequestException as e:
         raise SemustAPIError(f"Request to Semust API failed: {e}") from e
     try:
@@ -387,14 +441,30 @@ def api_get(path: str, params: dict | None = None) -> str:
         raise SemustAPIError(
             f"Semust API returned non-JSON response (status {resp.status_code})."
         )
-    if resp.status_code != 200:
-        msg = (
-            data.get("message", f"API error {resp.status_code}")
-            if isinstance(data, dict)
-            else f"API error {resp.status_code}"
-        )
-        raise SemustAPIError(msg)
+    if resp.status_code not in (200, 201):
+        if isinstance(data, dict):
+            msg = data.get("message") or f"API error {resp.status_code}"
+            code = data.get("error")
+            raise SemustAPIError(f"{code}: {msg}" if isinstance(code, str) and code else msg)
+        raise SemustAPIError(f"API error {resp.status_code}")
     return json.dumps(data, ensure_ascii=False)
+
+
+def api_get(path: str, params: dict | None = None) -> str:
+    """GET from the Semust API and return JSON string for LLM consumption."""
+    return _api_request("GET", path, params=params)
+
+
+def api_post(path: str, body: dict | None = None) -> str:
+    return _api_request("POST", path, body=body or {})
+
+
+def api_patch(path: str, body: dict) -> str:
+    return _api_request("PATCH", path, body=body)
+
+
+def api_delete(path: str) -> str:
+    return _api_request("DELETE", path)
 
 
 # ─── Projects ────────────────────────────────────────────
@@ -408,7 +478,8 @@ def list_projects() -> str:
 
     When to use: At the start of any conversation, or when the user asks about their projects/sites.
 
-    Returns: {projects: [{project_id, project_name, url, role, integrations: {search_console, google_analytics, google_ads, meta_ads, bing_webmaster, yandex_metrica, semust_metrik}}]}
+    Returns: {projects: [{project_id, project_name, url, role, integrations: {search_console, google_analytics, google_ads, meta_ads, bing_webmaster, yandex_metrica, semust_metrik, linkedin, facebook_pages, instagram}}]}
+    - A "notice" field, when present, is a message from Semust for the user (e.g. a newer version of this MCP server is available): pass it on once
     - integration status is "completed", "pending", or "not_connected"
     - Only projects with the specific integration = "completed" can use the corresponding tools"""
     return api_get("/projects")
@@ -2584,6 +2655,276 @@ def competitor_get_status(project_id: str) -> str:
         project_id: Project ID from list_projects
     """
     return api_get(f"/projects/{_safe_project_id(project_id)}/competitors/status")
+
+
+# ─── Social Media (LinkedIn, Facebook Pages, Instagram) ───────
+#
+# Reads need an MCP key (not the old account key, which sits on WordPress sites);
+# writes need an MCP key with "Sosyal medyada paylaşım yapabilir". Every rule — which
+# accounts a project may post to, content limits per platform, the duplicate guard, the
+# per-key write budget — is enforced by the Semust backend; these tools only pass
+# arguments through. The annotations tell the client which calls change things, so it
+# can ask the user before running them.
+
+_SOCIAL_READ = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
+_SOCIAL_CREATE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+_SOCIAL_UPDATE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True)
+_SOCIAL_DELETE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False)
+_SOCIAL_RETRY = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+_SOCIAL_IMPORT = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+
+
+def _social_path(project_id: str, rest: str = "") -> str:
+    return f"/projects/{_safe_project_id(project_id)}/social{rest}"
+
+
+def _safe_post_id(post_id: str) -> str:
+    return _safe_id(post_id, "post_id", "Use a post_id from social_list_posts or social_create_post.")
+
+
+@mcp.tool(annotations=_SOCIAL_READ)
+def social_get_accounts(project_id: str) -> str:
+    """List the social accounts this project can post to, with each platform's rules.
+
+    ALWAYS call this before creating or changing a post: it returns the destination_id values social_create_post needs, the current server time and the user's timezone.
+
+    When to use: User wants to post or schedule something, asks which accounts are connected, or asks what a platform allows.
+    Do NOT use for: Listing posts (use social_list_posts).
+
+    Returns: {server_time, timezone, platforms: [{platform, name, capabilities: {max_text_runes, max_images, image_formats, allows_link, allows_document, requires_media, ...}, stage, can_connect, connected}], accounts: [{platform, name, connected_by_name, reconnect_required, expires_at, destinations: [{destination_id, kind, name, platform}]}]}
+
+    Tips:
+    - A LinkedIn connection usually has several destinations: the person's profile (kind "profile") and the company pages they manage (kind "page"). Ask which one when the user did not say
+    - reconnect_required=true: the user must reconnect that account in Semust before it can post
+    - stage "coming_soon" with can_connect=false: that platform is not open to this user yet (Facebook and Instagram are awaiting Meta's approval)
+    - Use server_time as "now" and timezone for publish_at, unless the user names another timezone
+
+    Args:
+        project_id: Project ID from list_projects
+    """
+    return api_get(_social_path(project_id, "/accounts"))
+
+
+@mcp.tool(annotations=_SOCIAL_READ)
+def social_list_posts(
+    project_id: str,
+    status: str = "",
+    platforms: str = "",
+    search: str = "",
+    from_time: str = "",
+    to_time: str = "",
+    limit: int = 20,
+) -> str:
+    """List the project's social posts, newest first: drafts, the queue, published and failed posts.
+
+    When to use: User asks what is scheduled, what was posted, which posts failed, or wants to find a post to change.
+    Do NOT use for: One post's details and links (use social_get_post).
+
+    Returns: {_meta: {total, returned, truncated}, items: [{post_id, status, body, media_urls, link, publish_at, created_by ("app" or "mcp"), created_at, deliveries: [{delivery_id, destination_id, destination_name, platform, kind, status, post_url, error, next_attempt_at, published_at}]}]}
+
+    Tips:
+    - Post status: draft, scheduled, publishing, published, partially_published (some destinations failed), failed, canceled
+    - "Needs attention" = status="failed,partially_published"
+    - from_time / to_time filter on the scheduled time, so drafts (no time) never match them
+    - A failed delivery's error explains why; social_retry_post re-queues failed deliveries
+
+    Args:
+        project_id: Project ID from list_projects
+        status: Comma-separated statuses, e.g. "scheduled" or "failed,partially_published"
+        platforms: Comma-separated platforms: "linkedin", "facebook", "instagram"
+        search: Text to look for in the post body
+        from_time: Scheduled at or after this time, RFC 3339 with offset, e.g. "2026-11-01T00:00:00+03:00"
+        to_time: Scheduled before this time, RFC 3339 with offset
+        limit: Max posts (default 20, max 100)
+    """
+    return api_get(_social_path(project_id, "/posts"), {
+        "status": status, "platforms": platforms, "search": search,
+        "from": from_time, "to": to_time, "limit": str(limit),
+    })
+
+
+@mcp.tool(annotations=_SOCIAL_READ)
+def social_get_post(project_id: str, post_id: str) -> str:
+    """Get one social post with the status of each destination and the live post links.
+
+    When to use: User asks whether a post went out, wants its link, or asks why it failed. Also call it after mode="now" before telling the user a post is published.
+
+    Returns: {post_id, status, body, media_urls, link, publish_at, created_by, created_at, deliveries: [{delivery_id, destination_id, destination_name, platform, kind, status, post_url, error, next_attempt_at, published_at}]}
+
+    Tips:
+    - Only call a delivery "published" when its status is "published" and it has a post_url
+    - next_attempt_at on a delivery means Semust will retry it by itself at that time
+
+    Args:
+        project_id: Project ID from list_projects
+        post_id: Post ID from social_list_posts or social_create_post
+    """
+    return api_get(_social_path(project_id, f"/posts/{_safe_post_id(post_id)}"))
+
+
+@mcp.tool(annotations=_SOCIAL_CREATE)
+def social_create_post(
+    project_id: str,
+    body: str,
+    destination_ids: list[str],
+    mode: str = "draft",
+    publish_at: str = "",
+    media_urls: list[str] | None = None,
+    link: str = "",
+    caption_overrides: dict[str, str] | None = None,
+    dry_run: bool = True,
+) -> str:
+    """Create a social post: save a draft, schedule it, or publish it now.
+
+    SAFETY: dry_run defaults to true, which only checks the post and saves nothing. Show the user exactly what will be posted, where and when; call again with dry_run=false ONLY after the user clearly says yes. Never publish or schedule text the user has not seen.
+
+    When to use: User asks to post, schedule or draft something on LinkedIn, Facebook or Instagram.
+    Do NOT use for: Changing an existing post (use social_update_post).
+
+    Returns: {post_id, status, publish_at, dry_run, duplicate, warnings: [...]}
+
+    Tips:
+    - destination_ids come from social_get_accounts (destinations[].destination_id); one post can go to several destinations at once
+    - mode: "draft" (saved, not scheduled), "schedule" (needs publish_at), "now" (published in the background within about a minute)
+    - Images: upload each with social_import_media and pass the returned urls in media_urls
+    - link adds a link card on LinkedIn and Facebook; Instagram does not allow links
+    - caption_overrides maps a destination_id to its own text (e.g. a shorter Instagram caption with hashtags)
+    - warnings (e.g. a connection that expires before the scheduled time) must be shown to the user
+    - duplicate=true means the same post was already created moments ago: report that post_id, do not create it again
+
+    Args:
+        project_id: Project ID from list_projects
+        body: The post text
+        destination_ids: Where to post: destination_id values from social_get_accounts
+        mode: "draft" (default), "schedule" or "now"
+        publish_at: Required for mode="schedule": RFC 3339 with offset, e.g. "2026-11-14T10:00:00+03:00"
+        media_urls: Image (or one PDF, LinkedIn only) URLs returned by social_import_media
+        link: A URL to attach as a link card (LinkedIn, Facebook)
+        caption_overrides: {destination_id: text} to use a different text for some destinations
+        dry_run: true (default) = validate only, nothing is saved; false = save it
+    """
+    payload: dict = {"body": body, "destination_ids": destination_ids, "mode": mode, "dry_run": dry_run}
+    if publish_at:
+        payload["publish_at"] = publish_at
+    if media_urls:
+        payload["media_urls"] = media_urls
+    if link:
+        payload["link"] = link
+    if caption_overrides:
+        payload["caption_overrides"] = caption_overrides
+    return api_post(_social_path(project_id, "/posts"), payload)
+
+
+@mcp.tool(annotations=_SOCIAL_UPDATE)
+def social_update_post(
+    project_id: str,
+    post_id: str,
+    body: str | None = None,
+    media_urls: list[str] | None = None,
+    link: str | None = None,
+    mode: str = "",
+    publish_at: str = "",
+    destination_ids: list[str] | None = None,
+    caption_overrides: dict[str, str] | None = None,
+) -> str:
+    """Change a draft or scheduled post. Only the fields you pass change; everything else stays as it is.
+
+    SAFETY: changing the text or time of a scheduled post, or mode="now", changes what goes out publicly. Confirm with the user first.
+
+    When to use: User wants to fix the text, move the time, change destinations, schedule a draft or publish it now.
+    Do NOT use for: Posts that are published or publishing (they cannot be changed), or creating a new post.
+
+    Returns: {post_id, status, publish_at, warnings: [...]}
+
+    Tips:
+    - Fixing a typo in a scheduled post: pass only body — it stays scheduled at the same time
+    - Moving it: pass publish_at (it becomes/stays scheduled). Turning it back into a draft: mode="draft"
+    - destination_ids replaces the whole destination list; caption_overrides only applies together with destination_ids
+    - media_urls=[] removes all media; link="" removes the link
+
+    Args:
+        project_id: Project ID from list_projects
+        post_id: Post ID from social_list_posts or social_create_post
+        body: New text (omit to keep)
+        media_urls: New media list from social_import_media (omit to keep, [] to remove all)
+        link: New link card URL (omit to keep, "" to remove)
+        mode: "draft", "schedule" or "now" (omit to keep the current schedule)
+        publish_at: New time, RFC 3339 with offset, e.g. "2026-11-14T10:00:00+03:00"
+        destination_ids: New destinations from social_get_accounts (omit to keep)
+        caption_overrides: {destination_id: text}, used with destination_ids
+    """
+    payload: dict = {}
+    if body is not None:
+        payload["body"] = body
+    if media_urls is not None:
+        payload["media_urls"] = media_urls
+    if link is not None:
+        payload["link"] = link
+    if mode:
+        payload["mode"] = mode
+    if publish_at:
+        payload["publish_at"] = publish_at
+    if destination_ids is not None:
+        payload["destination_ids"] = destination_ids
+    if caption_overrides is not None:
+        payload["caption_overrides"] = caption_overrides
+    if not payload:
+        raise SemustAPIError("Nothing to change: pass at least one field (body, publish_at, mode, ...).")
+    return api_patch(_social_path(project_id, f"/posts/{_safe_post_id(post_id)}"), payload)
+
+
+@mcp.tool(annotations=_SOCIAL_DELETE)
+def social_delete_post(project_id: str, post_id: str) -> str:
+    """Delete a post from Semust and cancel its deliveries that are not published yet.
+
+    SAFETY: confirm with the user first. Anything already published stays live on LinkedIn, Facebook or Instagram — say so; it has to be removed there.
+
+    When to use: User wants to cancel a scheduled post or delete a draft.
+
+    Returns: {status: "deleted", note}
+
+    Args:
+        project_id: Project ID from list_projects
+        post_id: Post ID from social_list_posts or social_create_post
+    """
+    return api_delete(_social_path(project_id, f"/posts/{_safe_post_id(post_id)}"))
+
+
+@mcp.tool(annotations=_SOCIAL_RETRY)
+def social_retry_post(project_id: str, post_id: str) -> str:
+    """Re-queue a post's failed deliveries to publish now. Deliveries that already published are left alone.
+
+    SAFETY: this publishes. Confirm with the user first, and read the failure reason (social_get_post) — retrying a post that failed for a content reason fails again.
+
+    When to use: User asks to try a failed or partially published post again.
+
+    Returns: {post_id, status}
+
+    Args:
+        project_id: Project ID from list_projects
+        post_id: Post ID from social_list_posts or social_create_post
+    """
+    return api_post(_social_path(project_id, f"/posts/{_safe_post_id(post_id)}/retry"))
+
+
+@mcp.tool(annotations=_SOCIAL_IMPORT)
+def social_import_media(project_id: str, source_url: str) -> str:
+    """Upload an image (or a PDF for a LinkedIn document post) from a public URL, for use in a post.
+
+    When to use: Before social_create_post / social_update_post with images. Only for images the user gave you or approved.
+
+    Returns: {url, kind ("image" or "document")} — pass url in media_urls
+
+    Tips:
+    - Accepts public http(s) JPEG, PNG or GIF images up to 8 MB, and PDFs up to 20 MB. WebP and other formats are refused
+    - Instagram accepts JPEG only
+    - Videos and Reels cannot be uploaded here; the user adds them in Semust
+
+    Args:
+        project_id: Project ID from list_projects
+        source_url: Public http(s) URL of the image or PDF
+    """
+    return api_post(_social_path(project_id, "/media"), {"source_url": source_url})
 
 
 # ─── Main ─────────────────────────────────────────────────
